@@ -53,19 +53,25 @@ def getHistoryStockData(code, dataurl):
     finally:
         None
 
-def get_one_stock_one_day_history(stock_code, month, day, year):
-    dataUrl = "http://ichart.yahoo.com/table.csv?s=%d.SS&a=%d&b=%d&c=%d&d=%d&e=%d&f=%d&g=d"%(stock_code, month-1, day,
-    year, month-1, day, year)
-    return getHistoryStockData(stock_code, dataUrl)
 
-def get_one_stock_one_day_close(stock_code, month, day, year):
-    return float(get_one_stock_one_day_history(stock_code, month, day, year)['close'])
+def get_one_stock_one_day_history(stock_code, month, day, year, market):
+    #if whitelist(stock_code, month, day, year):
+    #601600 20080103 problem
+    dataUrlSZ = "http://ichart.yahoo.com/table.csv?s=%s.SZ&a=%d&b=%d&c=%d&d=%d&e=%d&f=%d&g=d"%(stock_code, month-1, day,
+    year, month-1, day, year)
+    dataUrlSS = "http://ichart.yahoo.com/table.csv?s=%s.SS&a=%d&b=%d&c=%d&d=%d&e=%d&f=%d&g=d"%(stock_code, month-1, day,
+    year, month-1, day, year)
+    if (market == "SZ"):
+        dataUrl = dataUrlSZ
+    if (market == "SS"):
+        dataUrl = dataUrlSS
+    return getHistoryStockData(stock_code, dataUrl)
 
 def main():
     "main function"
     #dbOperator.connDB()
     #get_stock_history()
-    print get_one_stock_one_day_close(600000, 8, 24, 2007)
+    print get_one_stock_one_day_history("601600", 1, 3, 2008, "SS")
     #dbOperator.closeDB()
 if __name__ == '__main__':
     main()

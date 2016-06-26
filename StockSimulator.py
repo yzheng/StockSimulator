@@ -1,26 +1,41 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import copy
 import sys
 import StockHistory as sh
 
-def getOneDayStockClose(stockId, month, day, year):
-    sh.get_one_stock_one_day_close(stockId, month, day, year)
 
+def getOneDayStockClose(stockId, month, day, year, market):
+    slen = len(stockId)
+    if stockId == "562":
+        stockId = "166"
+    if (slen < 6):
+        for i in range (0, 6-slen):
+            stockId = '0' + stockId
+    res = sh.get_one_stock_one_day_history(stockId, month, day, year, market)
+    if res == None:
+        print stockId
+        return 1
+    else:
+        res = float(res['close'])
+    return res
 class BalanceSheetTimeSeries:
     def __init__(self):
         self.balanceSheets = []
         self.balanceSheetsDate = []
 
-    def add(self, balanceSheet):
-        self.balanceSheetsDate.append(balanceSheet.getDate())
-        self.balanceSheets.append(balanceSheet)
+    def add(self, bSheet):
+        self.balanceSheetsDate.append(bSheet.getDate())
+        self.balanceSheets.append(bSheet)
 
     def ifExist(self, date):
-        return date in balanceSheetsDate
+        return date in self.balanceSheetsDate
 
     def buildBalanceSheet(self, date):
         bs = BalanceSheet(date)
         if len(self.balanceSheets) > 0:
-            bs = copy.deepcopy(self.balanceSheets[:-1])
+            bs = copy.deepcopy(self.balanceSheets[-1])
+            bs.setDate(date)
         self.add(bs)
         return bs
 
@@ -28,7 +43,7 @@ class BalanceSheetTimeSeries:
         return (min(self.balanceSheetsDate), max(self.balanceSheetsDate))
 
     def getBalanceSheet(self, date):
-        if date not in balanceSheetsDate:
+        if date not in self.balanceSheetsDate:
             raise Exception("trying to retrieve a balance sheet not existing")
         return self.balanceSheets[self.balanceSheetsDate.index(date)]
 
@@ -38,22 +53,30 @@ class BalanceSheetTimeSeries:
                 self.balanceSheets[self.balanceSheetsDate.index(date)].calcBalance()
 
     def getStockBalance(self, date):
-        if date not in balanceSheetsDate:
+        if date not in self.balanceSheetsDate:
             raise Exception("Trying to retrieve a balance sheet not existing")
-        self.balanceSheets[self.balanceSheetsDate.index(date)].getStockBalance()
+        return self.balanceSheets[self.balanceSheetsDate.index(date)].getStockBalance()
 
     def getCashBalance(self, date):
-        if date not in balanceSheetsDate:
+        if date not in self.balanceSheetsDate:
             raise Exception("Trying to retrieve a balance sheet not existing")
-        self.balanceSheets[self.balanceSheetsDate.index(date)].getCashBalance()
+        return self.balanceSheets[self.balanceSheetsDate.index(date)].getCashBalance()
+
+    def printCashBalances(self, startDate, endDate):
+        for date in self.balanceSheetsDate:
+            result = str(date) + "\t"
+            if date >= startDate and date <= endDate:
+                cash = self.getCashBalance(date)
+                result += "cash"+"\t"+str(cash) + "\n"
+            sys.stdout.write(result)
 
 
     def printBalances(self, startDate, endDate):
         for date in self.balanceSheetsDate:
-            result = ""
+            result = str(date) + "\t"
             if date >= startDate and date <= endDate:
                 cash = self.getCashBalance(date)
-                result += cash + "\t"
+                result += "cash"+"\t"+str(cash) + "\t"
                 stocks = self.getStockBalance(date)
                 for s in stocks:
                     result += s + "\t" + str(stocks[s]) + "\t"
@@ -65,10 +88,26 @@ class BalanceSheet:
         self.date = date
         self.accounts = {} #account id to a list of stock id
         self.stocks = {} #stock id, number of stocks
+        self.stockIdMarketMap = {} #stock id, stock type
         self.cash = 0
         self.stockPriceMap = {}
         self.stockBalancePerAccount = {}
         self.totalStockBalance = 0
+
+    def debugPrint(self):
+        print "---debug---"
+        print "BalanceSheet"
+        print self.date
+        print self.accounts
+        print self.stocks
+        print self.cash
+        print self.stockPriceMap
+        print self.stockBalancePerAccount
+        print self.totalStockBalance
+        print "-----------"
+    def setDate(self, date):
+        self.date = date
+
     def getYearMonthDay(self, date):
         year = date/10000
         month = (date - year * 10000)/100
@@ -79,27 +118,31 @@ class BalanceSheet:
         self.stockPriceMap = {}
         for stockId in self.stocks:
             (year, month, day) = self.getYearMonthDay(self.date)
-            price = getOneDayStockClose(stockId, month, day, year)
-            self.stockPriceMap[stockId] = price
+            market = self.stockIdMarketMap[stockId]
+            try:
+                price = getOneDayStockClose(stockId, month, day, year, market)
+                self.stockPriceMap[stockId] = price
+            except:
+                print "price Error " + stockId + str(month) + " " + str(day) + " " + str(year) 
 
-    def calcBalance():
+    def calcBalance(self):
         self.getStockPrice()
         self.totalStockBalance = 0;
-        self.totalBalancePerAccount = {}
-        for accountId in accounts:
+        self.stockBalancePerAccount = {}
+        for accountId in self.accounts:
             total = 0
-            for stockId in accounts[accountId]:
-                if stockId not in stockPriceMap:
-                    raise Exception ("StockId not in stockPriceMap")
-                total += stockPriceMap[stockId] * stocks[stockId]
-            self.totalBalancePerAccount[accountId] = total
+            for stockId in self.accounts[accountId]:
+                if stockId not in self.stockPriceMap:
+                    raise Exception ("StockId not in stockPriceMap " + stockId)
+                total += self.stockPriceMap[stockId] * self.stocks[stockId]
+            self.stockBalancePerAccount[accountId] = total
             self.totalStockBalance += total
         return self.totalStockBalance
 
-    def getStockBalance():
-        return self.totalBalancePerAccount
+    def getStockBalance(self):
+        return self.stockBalancePerAccount
 
-    def getCashBalance():
+    def getCashBalance(self):
         return self.cash
 
     def getDate(self):
@@ -121,27 +164,31 @@ class BalanceSheet:
             self.accounts[accountId].remove(stockId)
 
     def buyStock(self, accountId, stockId, num, purchasePrice,
-                 transactionFee, tax, commission, otherFees, transferFee):
+                 transactionFee, tax, commission, otherFees, transferFee, market):
+        if (stockId == "126011"): return
         if (stockId in self.stocks):
             self.stocks[stockId] += num
         else:
             self.stocks[stockId] = num
             #make sure we only add stockId to account once
             self.addStockToAccount(accountId, stockId)
-        #since tax is already caluclated in purchasePrice, we don't double count here
-        self.cash -= (purchasePrice*num + commission + otherFees + transferFee)
+        #since transaction fee is already caluclated in purchasePrice, we don't double count here
+        self.stockIdMarketMap[stockId] = market
+        self.cash -= (purchasePrice*num + tax + commission + otherFees + transferFee)
+        print "buy " + stockId + " " + str(num) + " at: " + str(purchasePrice)  
 
-   def sellStock(self, accountId, stockId, num, sellPrice, transactionFee, tax, commission, otherFees, transferFee):
+    def sellStock(self, accountId, stockId, num, sellPrice, transactionFee, tax, commission, otherFees, transferFee):
+        if (stockId == "126011"): return
         if (stockId in self.stocks):
             self.stocks[stockId] -= num
             if self.stocks[stockId] == 0:
                 del self.stocks[stockId]
                 removeStockFromAccount(accountId, stockId)
         else:
-            raise Exception("Trying to sell stock that is not already bought")
-        self.cash += sellPrice*num
-        #since tax is already caluclated in sellPrice, we don't double count here
-        self.cash -= (commission + otherFees + transferFee)
+            raise Exception("Trying to sell stock that is not already bought " + stockId)
+        self.cash += -1.0*sellPrice*num
+        self.cash -= (tax + commission + otherFees + transferFee)
+        print "sell " + stockId + " " + str(num) + " at: " + str(sellPrice)  
 
     def transfer(self, cashAmount):
         self.cash += cashAmount
@@ -174,7 +221,7 @@ class dataSchema:
         self.transactionFee  = float(cols[self.colDef["交易费用"]])
         self.tax             = float(cols[self.colDef["印花税"]])
         self.otherFees       = float(cols[self.colDef["其他费用"]])
-        self.accounId        = cols[self.colDef["股东帐户"]]
+        self.accountId       = cols[self.colDef["股东帐户"]]
         self.commission      = float(cols[self.colDef["佣金"]])
         self.transferFee     = float(cols[self.colDef["过户费"]])
         self.operation       = cols[self.colDef["操作"]]
@@ -183,7 +230,10 @@ class dataSchema:
         self.synoposis       = cols[self.colDef["摘要"]]
         self.transactionid   = cols[self.colDef["成交编号"]]
         self.currency        = cols[self.colDef["币种"]]
-
+        if (self.accountId.startswith("A")):
+            self.market = "SS"
+        else:
+            self.market = "SZ"
 
 class EventGenerator:
     def __init__(self, fileName, BalanceSheetTimeSeries):
@@ -195,8 +245,9 @@ class EventGenerator:
 
     def IterateFile(self, startDate, endDate):
         with open(self.fileName) as f:
-            data = f.read()
-            processOneLine(data, startDate, endDate)
+            for line in f:
+                line = line.strip()
+                self.processOneLine(line, startDate, endDate)
 
     def processOneLine(self, data, startDate, endDate):
         cols = data.split(",")
@@ -204,7 +255,7 @@ class EventGenerator:
         if ds.date < startDate or ds.date > endDate:
             return
         if (ds.transactionType == "转"):
-            self.transactionHander("Transfer", ds)
+            self.transactionHandler("Transfer", ds)
         if (ds.transactionType == "买"):
             self.transactionHandler("Buy", ds)
         if (ds.transactionType == "卖"):
@@ -213,13 +264,13 @@ class EventGenerator:
     def transactionHandler(self, transactionType, dataSchemaObj):
         ds = dataSchemaObj
         balanceSheet = None
-        if not self.BTS.ifExisit(date):
-            balanceSheet = self.BTS.buildBalanceSheet(date)
+        if not self.BTS.ifExist(ds.date):
+            balanceSheet = self.BTS.buildBalanceSheet(ds.date)
         else:
-            balanceSheet = self.BTS.getBalanceSheet(date)
+            balanceSheet = self.BTS.getBalanceSheet(ds.date)
         if transactionType == "Buy":
             balanceSheet.buyStock (ds.accountId, ds.stockId, ds.num, ds.averagePrice,
-                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee)
+                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee, ds.market)
         if transactionType == "Sell":
             balanceSheet.sellStock (ds.accountId, ds.stockId, ds.num, ds.averagePrice,
                                ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee)
@@ -230,11 +281,16 @@ class EventGenerator:
 
 #main class
 def main():
-    fileName = "~/DevPj/stockmining/data/duizhangRAW2.csv"
+    fileName = "../stockmining/data/duizhangRAW2-3.csv"
     bts = BalanceSheetTimeSeries()
-    evg = EventGenerator(bts, fileName)
-    evg.IterateFile(20070101, 20071231)
+    evg = EventGenerator(fileName, bts)
+    evg.IterateFile(20070101, 20151231)
     bst = evg.getBalanceSheetTimeSeries()
     dateRange = bst.getDateRange()
+    bst.printCashBalances(dateRange[0], dateRange[1])
     bst.calcBalances(dateRange[0], dateRange[1])
     bst.printBalances(dateRange[0], dateRange[1])
+
+
+if __name__=="__main__":
+    main()
