@@ -13,8 +13,15 @@ class DBOperation:
 
     def create_table_if_not_exists(self):
         cursor = self.conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS STOCK (stockid varchar(20) primary key, date varchar(20), closingprice varchar(20))
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS STOCK (
+        stockid varchar(20),
+        date varchar(20),
+        openprice varchar(20),
+        highprice varchar(20),
+        lowprice varchar(20),
+        closclosingprice varchar(20),
+        volum varchar(20),
+        adjclosingprice varchar(20), PRIMARY KEY(stockid, date))''')
 
     def select_stock(self, stockId, date):
         cursor = self.conn.cursor()
@@ -22,7 +29,7 @@ class DBOperation:
         values = cursor.fetchall()
         return values
 
-    def insert_record(self, stockId, date, closingPrice ):
+    def insert_record(self, stockId, date, openprice, highprice, lowprice, closingprice, volume, adjclosingprice ):
         cursor = self.conn.cursor()
-        cursor.execute('''INSERT INTO STOCK  values (?,?,?)''', (stockId, date, closingPrice))
+        cursor.execute('''INSERT INTO STOCK  values (?,?,?,?,?,?,?,?)''', (stockId, date, openprice, highprice, lowprice, closingprice, volume, adjclosingprice))
         self.conn.commit()

@@ -3,21 +3,40 @@
 import copy
 import sys
 import StockHistory as sh
+import traceback
 
+SHistory = sh.StockHistory()
+
+def getYearMonthDay(date):
+    year = date/10000
+    month = (date - year*10000)/100
+    day = (date - year * 10000 - month*100)
+    return (year, month, day)
+
+def formatDate(date):
+    year,month,day = getYearMonthDay(date)
+    return str(year) + "/" + str(month) + "/" + str(day)
+
+def normalizeStockId(stockId):
+    slen = len(stockId)
+    if (slen < 6):
+        for i in range (0, 6-slen):
+            stockId = '0' + stockId
+    return stockId
 
 def getOneDayStockClose(stockId, month, day, year, market):
     slen = len(stockId)
     if stockId == "562":
         stockId = "166"
-    if (slen < 6):
-        for i in range (0, 6-slen):
-            stockId = '0' + stockId
-    res = sh.get_one_stock_one_day_history(stockId, month, day, year, market)
+    if stockId == "000562":
+        stockId = "000166"
+    stockId = normalizeStockId(stockId)
+    res = SHistory.getStockClosingPrice(stockId, month, day, year, market)
     if res == None:
         print stockId
         return 1
     else:
-        res = float(res['close'])
+        res = float(res[0]['close'])
     return res
 class BalanceSheetTimeSeries:
     def __init__(self):
@@ -64,7 +83,7 @@ class BalanceSheetTimeSeries:
 
     def printCashBalances(self, startDate, endDate):
         for date in self.balanceSheetsDate:
-            result = str(date) + "\t"
+            result = formatDate(date) + "\t"
             if date >= startDate and date <= endDate:
                 cash = self.getCashBalance(date)
                 result += "cash"+"\t"+str(cash) + "\n"
@@ -72,15 +91,22 @@ class BalanceSheetTimeSeries:
 
 
     def printBalances(self, startDate, endDate):
+        print "date\tcash\t109247238\tA525260141\tTotalStock\tTotalAsset\tSHA300\n"
+        result = ""
         for date in self.balanceSheetsDate:
-            result = str(date) + "\t"
+            result = formatDate(date) + "\t"
             if date >= startDate and date <= endDate:
                 cash = self.getCashBalance(date)
-                result += "cash"+"\t"+str(cash) + "\t"
-                stocks = self.getStockBalance(date)
-                for s in stocks:
-                    result += s + "\t" + str(stocks[s]) + "\t"
-                result += "\n"
+                result += str(cash) + "\t"
+                stockBalancePerAccount = self.getStockBalance(date)
+                totalStocks = 0
+                for s in stockBalancePerAccount.keys():
+                    if s == '0': continue
+                    totalStocks += stockBalancePerAccount[s]
+                    result +="%.2f\t"%(stockBalancePerAccount[s])
+                result += "%.2f\t%.2f\n"%(totalStocks, totalStocks + cash)
+                year, month, day = getYearMonthDay(date)
+                #result += str(getOneDayStockClose('000300', month, day, year, "SS")) + "\n"
             sys.stdout.write(result)
 
 class BalanceSheet:
@@ -115,7 +141,7 @@ class BalanceSheet:
         return (year, month, day)
 
     def getStockPrice(self):
-        self.stockPriceMap = {}
+        #self.stockPriceMap = {}
         for stockId in self.stocks:
             (year, month, day) = self.getYearMonthDay(self.date)
             market = self.stockIdMarketMap[stockId]
@@ -123,7 +149,11 @@ class BalanceSheet:
                 price = getOneDayStockClose(stockId, month, day, year, market)
                 self.stockPriceMap[stockId] = price
             except:
-                print "price Error " + stockId + str(month) + " " + str(day) + " " + str(year) 
+                traceback.print_exc()
+                if (stockId in self.stockPriceMap):
+                    print "using default price set by purchase/sell " + stockId + " " + str(month) + " " + str(day) + " " + str(year)
+                else:
+                    print "price Error " + stockId + " "+str(month) + " " + str(day) + " " + str(year)
 
     def calcBalance(self):
         self.getStockPrice()
@@ -133,8 +163,12 @@ class BalanceSheet:
             total = 0
             for stockId in self.accounts[accountId]:
                 if stockId not in self.stockPriceMap:
-                    raise Exception ("StockId not in stockPriceMap " + stockId)
-                total += self.stockPriceMap[stockId] * self.stocks[stockId]
+                    raise Exception( "StockId not in stockPriceMap " + stockId + " date:" + str(self.date))
+                else:
+
+                    subTotal = self.stockPriceMap[stockId] * self.stocks[stockId]
+                    print "stockId: %s, price: %f, num:%ld, subtotal:%ld"%( stockId, self.stockPriceMap[stockId], self.stocks[stockId], subTotal)
+                    total += subTotal
             self.stockBalancePerAccount[accountId] = total
             self.totalStockBalance += total
         return self.totalStockBalance
@@ -157,14 +191,15 @@ class BalanceSheet:
 
     def removeStockFromAccount(self, accountId, stockId):
         if (not accountId in self.accounts):
-            raise Exception("accountId not in accounts")
+            raise Exception("accountId (%s) not in accounts"%(accountId))
         if (stockId not in self.accounts[accountId]):
-            raise Exception("trying to remove a stock that is not in account")
+            raise Exception("trying to remove a stock (%s) that is not in account %s"%(stockId, accountId))
         else:
             self.accounts[accountId].remove(stockId)
 
     def buyStock(self, accountId, stockId, num, purchasePrice,
-                 transactionFee, tax, commission, otherFees, transferFee, market):
+                 transactionFee, tax, commission, otherFees, transferFee, market, totalAmount):
+        stockId = normalizeStockId(stockId)
         if (stockId == "126011"): return
         if (stockId in self.stocks):
             self.stocks[stockId] += num
@@ -174,24 +209,51 @@ class BalanceSheet:
             self.addStockToAccount(accountId, stockId)
         #since transaction fee is already caluclated in purchasePrice, we don't double count here
         self.stockIdMarketMap[stockId] = market
-        self.cash -= (purchasePrice*num + tax + commission + otherFees + transferFee)
-        print "buy " + stockId + " " + str(num) + " at: " + str(purchasePrice)  
+        #self.cash -= (purchasePrice*num + tax + commission + otherFees + transferFee)
+        self.cash += totalAmount
+        self.stockPriceMap[stockId] = purchasePrice #default price
+        print stockId + " Price:" + str(self.stockPriceMap[stockId])
+        print "buy " + stockId + " " + str(num) + " at: " + str(purchasePrice) + " on:" + str(self.date)
 
-    def sellStock(self, accountId, stockId, num, sellPrice, transactionFee, tax, commission, otherFees, transferFee):
+    def sellStock(self, accountId, stockId, num, sellPrice, transactionFee, tax, commission, otherFees, transferFee,
+        totalAmount):
+        stockId = normalizeStockId(stockId)
+        print "sell"
+        print ("Sellling: %s, %s, %ld"%(accountId, stockId, num))
         if (stockId == "126011"): return
         if (stockId in self.stocks):
-            self.stocks[stockId] -= num
+            self.stocks[stockId] += num
             if self.stocks[stockId] == 0:
                 del self.stocks[stockId]
-                removeStockFromAccount(accountId, stockId)
+                self.removeStockFromAccount(accountId, stockId)
+            else:
+                self.stockPriceMap[stockId] = sellPrice #default price
         else:
             raise Exception("Trying to sell stock that is not already bought " + stockId)
-        self.cash += -1.0*sellPrice*num
-        self.cash -= (tax + commission + otherFees + transferFee)
-        print "sell " + stockId + " " + str(num) + " at: " + str(sellPrice)  
+        #self.cash += -1.0*sellPrice*num
+        #self.cash -= (tax + commission + otherFees + transferFee)
+        self.cash += totalAmount
+        print "sell " + stockId + " " + str(num) + " at: " + str(sellPrice)
 
-    def transfer(self, cashAmount):
-        self.cash += cashAmount
+    def transferStock(self, accountId, stockId, num, purchasePrice,
+                 transactionFee, tax, commission, otherFees, transferFee, market, totalAmount):
+        #Same as buy, except that we don't set default price
+        stockId = normalizeStockId(stockId)
+        if (stockId == "126011"): return
+        if (stockId in self.stocks):
+            self.stocks[stockId] += num
+        else:
+            self.stocks[stockId] = num
+            #make sure we only add stockId to account once
+            if (accountId != ""):
+                self.addStockToAccount(accountId, stockId)
+        #since transaction fee is already caluclated in purchasePrice, we don't double count here
+        self.stockIdMarketMap[stockId] = market
+        #self.cash -= (purchasePrice*num + tax + commission + otherFees + transferFee)
+        self.cash += totalAmount
+        print "Transfer " + stockId + " " + str(num)
+
+
 
 class dataSchema:
     def __init__(self, cols):
@@ -270,12 +332,16 @@ class EventGenerator:
             balanceSheet = self.BTS.getBalanceSheet(ds.date)
         if transactionType == "Buy":
             balanceSheet.buyStock (ds.accountId, ds.stockId, ds.num, ds.averagePrice,
-                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee, ds.market)
+                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee, ds.market,
+                               ds.totalAmount)
         if transactionType == "Sell":
             balanceSheet.sellStock (ds.accountId, ds.stockId, ds.num, ds.averagePrice,
-                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee)
+                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee, ds.totalAmount)
         if transactionType == "Transfer":
-            balanceSheet.transfer (ds.totalAmount)
+             balanceSheet.transferStock (ds.accountId, ds.stockId, ds.num, ds.averagePrice,
+                               ds.transactionFee, ds.tax, ds.commission, ds.otherFees, ds.transferFee, ds.market,
+                               ds.totalAmount)
+
 
 
 
@@ -284,13 +350,13 @@ def main():
     fileName = "../stockmining/data/duizhangRAW2-3.csv"
     bts = BalanceSheetTimeSeries()
     evg = EventGenerator(fileName, bts)
-    evg.IterateFile(20070101, 20151231)
+    evg.IterateFile(20070101, 200151231)
     bst = evg.getBalanceSheetTimeSeries()
     dateRange = bst.getDateRange()
     bst.printCashBalances(dateRange[0], dateRange[1])
     bst.calcBalances(dateRange[0], dateRange[1])
     bst.printBalances(dateRange[0], dateRange[1])
-
+    SHistory.closeDB()
 
 if __name__=="__main__":
     main()

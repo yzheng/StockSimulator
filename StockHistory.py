@@ -9,6 +9,7 @@ import sys
 import urllib2
 import db
 import datetime
+import traceback
 
 class StockHistory:
     def __init__(self):
@@ -31,12 +32,28 @@ class StockHistory:
         dt = datetime.date(year, month, day)
         record = self.dbOperation.select_stock(stockId, dt.isoformat())
         if (len(record) > 0):
-            return record[0]
+            #print "Obtained stock info from DB " + stockId
+            return [self.extractStockInfo(record[0][0], record[0][1:])]
         else:
             url = self.assembleUrl(stockId, month, day, year, market)
-            return self.getHistoryStockData(stockId, url)
+            res = self.getHistoryStockData(stockId, url)
+            #print "Obtained stock info from Yahoo " + stockId
+            return res
+
+    def extractStockInfo(self, stockId, stockInfo):
+        stockDetail = {}
+        stockDetail["date"] = stockInfo[0]
+        stockDetail["open"]  = stockInfo[1]  #开盘
+        stockDetail["high"]    = stockInfo[2]  #最高
+        stockDetail["low"]    = stockInfo[3]  #最低
+        stockDetail["close"] = stockInfo[4]  #收盘
+        stockDetail["volume"] = stockInfo[5]  #交易量
+        stockDetail["adj_close"] = stockInfo[6] #收盘adj价格
+        stockDetail["code"] = stockId      #代码
+        return stockDetail
 
     def getHistoryStockData(self, stockId, dataurl):
+            result = []
             try:
                 r = urllib2.Request(dataurl)
                 try:
@@ -49,23 +66,25 @@ class StockHistory:
                 stockQuotes = []
                 if tempData.find('404') == -1:
                     stockQuotes = tempData.split("\n")
-                stockDetail = {}
                 for stockQuote in stockQuotes:
                     stockInfo = stockQuote.split(",")
                     if len(stockInfo) == 7 and stockInfo[0]!='Date':
                         if not self.stockExitsInDate(stockId, stockInfo[0]):
-                           stockDetail["date"] = stockInfo[0]
-                           stockDetail["open"]  = stockInfo[1]  #开盘
-                           stockDetail["high"]    = stockInfo[2]  #最高
-                           stockDetail["low"]    = stockInfo[3]  #最低
-                           stockDetail["close"] = stockInfo[4]  #收盘
-                           stockDetail["volume"] = stockInfo[5]  #交易量
-                           stockDetail["adj_close"] = stockInfo[6] #收盘adj价格
-                           stockDetail["code"] = stockId        #代码
-                           self.dbOperation.insert_record(stockDetail["code"], stockDetail["date"], stockDetail["close"])
-                result = stockDetail
+                           stockDetail  = self.extractStockInfo(stockId, stockInfo)
+                           self.dbOperation.insert_record(
+                             stockDetail["code"],
+                             stockDetail["date"],
+                             stockDetail["open"],
+                             stockDetail["high"],
+                             stockDetail["low"],
+                             stockDetail["close"],
+                             stockDetail["volume"],
+                             stockDetail["adj_close"]
+                            )
+                           result.append(stockDetail)
             except Exception as err:
                 print ">>>>>> Exception: " + str(dataurl) + " " + str(err)
+                traceback.print_exc()
             else:
                 return result
             finally:
@@ -90,7 +109,7 @@ def main():
         #dbOperator.connDB()
         #get_stock_history()
         sh = StockHistory();
-        print sh.getStockClosingPrice("601600", 6, 24, 2015, "SS")
+        print sh.getStockClosingPrice("600000", 2, 18, 2011, "SS")
         #dbOperator.closeDB()
 if __name__ == '__main__':
         main()
