@@ -4,6 +4,7 @@ import copy
 import sys
 import StockHistory as sh
 import traceback
+import calendar
 
 SHistory = sh.StockHistory()
 
@@ -106,8 +107,31 @@ class BalanceSheetTimeSeries:
                     result +="%.2f\t"%(stockBalancePerAccount[s])
                 result += "%.2f\t%.2f\n"%(totalStocks, totalStocks + cash)
                 year, month, day = getYearMonthDay(date)
-                #result += str(getOneDayStockClose('000300', month, day, year, "SS")) + "\n"
             sys.stdout.write(result)
+
+    def endOfMonth(self, date):
+        # return 5 dates that is close to the end of the month of date
+        cl = calendar.Calendar()
+        year, month, day = getYearMonthDay(date)
+        dates = []
+        results = []
+        for day in cl.itermonthdates(year, month):
+            dates.append(day)
+        count = 0
+        for d in reversed(day):
+            if d.month == date.month and d.weekday() < 5:
+                if count < 5:
+                    results.append(d)
+                count += 1
+        return results
+
+
+    def simulate(self, currentDay, nextDay):
+            bs = copy.deepcopy(self.balanceSheets[-1])
+
+            #deepcopy date to nextDate
+            #make flavor to 1
+            #update the balance
 
 class BalanceSheet:
     def __init__(self, date):
@@ -119,6 +143,7 @@ class BalanceSheet:
         self.stockPriceMap = {}
         self.stockBalancePerAccount = {}
         self.totalStockBalance = 0
+        self.flavor = 0 # 0 is intrinsic 1 is interpolated
 
     def debugPrint(self):
         print "---debug---"

@@ -91,7 +91,7 @@ class StockHistory:
                 None
 
 
-    def assembleUrl(self, stock_code, month, day, year, market):
+    """def assembleUrl(self, stock_code, month, day, year, market):
         #if whitelist(stock_code, month, day, year):
         #601600 20080103 problem
         dataUrlSZ = "http://ichart.yahoo.com/table.csv?s=%s.SZ&a=%d&b=%d&c=%d&d=%d&e=%d&f=%d&g=d"%(stock_code, month-1, day,
@@ -103,6 +103,37 @@ class StockHistory:
         if (market == "SS"):
             dataUrl = dataUrlSS
         return dataUrl
+    """
+    def assembleUrl(self, stockId, month, day, year, market):
+        dataUrl =  "http://ichart.yahoo.com/table.csv?"
+        dataUrl += "s="  + str(stockId)
+        if (market == "SZ"):
+            dataUrl += ".SZ"
+        if (market == "SS"):
+            dataUrl += ".SS"
+        dataUrl += "&d=" + str(month-1)
+        dataUrl += "&e=" + str(day)
+        dataUrl += "&f=" + str(year)
+        dataUrl += "&a=" + str(month-1)
+        dataUrl += "&b=" + str(day)
+        dataUrl += "&c=" + str(year)
+        dataUrl += "&g=d"
+        return dataUrl
+
+    def assembleUrlTest(self, stockId, month, day, year, market):
+        #dataUrl =  "http://finance.yahoo.com/d/quotes.csv?e=.csv&"
+        dataUrl =  "http://ichart.yahoo.com/table.csv?"
+        dataUrl += "s="  + "USDJPY"
+        dataUrl += "&d=" + str(month-1)
+        dataUrl += "&e=" + str(day)
+        dataUrl += "&f=" + str(year)
+        dataUrl += "&a=" + str(month-1)
+        dataUrl += "&b=" + str(day)
+        dataUrl += "&c=" + str(year)
+        dataUrl += "&g=d"
+        print dataUrl
+        return dataUrl
+
 
 def main():
         "main function"
@@ -110,6 +141,7 @@ def main():
         #get_stock_history()
         sh = StockHistory();
         print sh.getStockClosingPrice("600000", 2, 18, 2011, "SS")
+        print sh.getStockClosingPrice("600000", 6, 28, 2016, "SS")
         #dbOperator.closeDB()
 if __name__ == '__main__':
         main()
