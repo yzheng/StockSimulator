@@ -4,6 +4,7 @@ from datetime import datetime
 class Match:
     def __init__(self):
         self.quantity = 0
+        self.stockId = ''
         self.discription = ''
         self.dateAcquired = 0
         self.dateSold = 0
@@ -21,6 +22,7 @@ class Match:
 
     def set(self,
         quantity,
+        stockId,
         discription,
         dateAcquired,
         dateSold,
@@ -29,6 +31,7 @@ class Match:
         expenseSale
         ) :
             self.quantity = quantity
+            self.stockId = stockId
             self.discription = discription
             self.dateAcquired = dateAcquired
             self.dateSold = dateSold
@@ -42,6 +45,7 @@ class Match:
     def __str__(self):
         return '\t'.join([ str(x) for x in
         [self.quantity,
+         self.stockId,
          self.discription,
          self.dateAcquired,
          self.dateSold,
@@ -109,13 +113,14 @@ class StockReturn:
         self.stockIdToTransaction = {}
         self.buyInfo = {}
         self.sellInfo = {}
+        self.dividendInfo = {}
         self.matchedBuySell = []
         self.shouldSkip = [str(x) for x in [704028, 126011, 580019]]
     def processOneLine(self, data):
         cols = data.split(",")
         ds = dataSchema(cols)
-        if ds.stockId == '':
-            return
+        #if ds.stockId == '':
+        #    return
         #if ds.stockId in self.shouldSkip:
         #    return
         #print ds
@@ -128,6 +133,11 @@ class StockReturn:
                 else:
                     self.buyInfo[ds.stockId] = []
                     self.buyInfo[ds.stockId].append(ds)
+            if (ds.synopsis.startswith("股息入帐") or
+                ds.synopsis.startswith("批量") ):
+                if ds.stockId not in self.dividendInfo:
+                    self.dividendInfo[ds.stockId] = []
+                self.dividendInfo[ds.stockId].append(ds)
         if (ds.transactionType == "买"):
             if ds.stockId in self.buyInfo:
                 self.buyInfo[ds.stockId].append(ds)
@@ -141,7 +151,15 @@ class StockReturn:
                 self.sellInfo[ds.stockId] = []
                 self.sellInfo[ds.stockId].append(ds)
 
-
+    def getDividend(self):
+        print '\t'.join(['stockId', 'date', 'totalAmount', 'Description'])
+        for stockId, dividends in self.dividendInfo.iteritems():
+           for item in dividends:
+              print '\t'.join([ str(x) for x in [stockId,
+                          item.date,
+                          item.totalAmount,
+                          item.synopsis
+                          ]])
 
     def IterateFile(self, file_name):
         with open(file_name) as f:
@@ -160,7 +178,8 @@ class StockReturn:
     def genMatch(self, quantity, buyDs, sellDs):
         m = Match()
         m.set(quantity,
-              buyDs.stockId,
+              sellDs.stockId,
+              sellDs.synopsis,
               buyDs.date,
               sellDs.date,
               sellDs.averagePrice,
@@ -173,6 +192,7 @@ class StockReturn:
     def printHeader(self):
         print '\t'.join([
         "quantity",
+        "stockId",
         "discription",
         "dateAcquired",
         "dateSold",
@@ -232,6 +252,7 @@ def main():
    sr.IterateFile(fileName)
    sr.matchTransactions()
    sr.printOutMatched()
+   sr.getDividend()
 
 if __name__ == "__main__":
     main()

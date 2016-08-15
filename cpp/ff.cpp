@@ -42,9 +42,6 @@ void bfsTraverse(vector<vector<GraphNode> > & graph,
     return;
 }
 
-void printFlow(vector<vector<GraphNode> >& graph, int u, int v) {
-      cout << "u: "<<u<<" v: "<<v<<" flow: " << graph[u][v].flow << endl;
-}
 
 bool findAugmentedPath_bfs(vector<vector<GraphNode> >& graph, int s, int t, int parent[]){
 
@@ -133,7 +130,6 @@ int fordFulkerson(vector< vector<GraphNode> >& graph, int s, int t)
     int max_flow = 0;
 
     while (findPath(graph, s, t, parent)) {
-        cout << "findPath True" << endl;
         int path_flow = INT_MAX;
         cout << t << "<-";
         for (v = t; v != s; v=parent[v]){
@@ -202,7 +198,9 @@ int main() {
         graph.push_back(vg);
     }
 
-    cout << "The maximum possible flow is " << fordFulkerson(graph, 0, 5) << "\n";
+    int maxFlow = fordFulkerson(graph, 0, 5); 
+    cout << "The maximum possible flow is " << maxFlow << "\n";
+    cout << "Flow Graph is: " << endl;
     printFlowGraph(graph);
     cout << "Done!" << endl;
     return 0;
