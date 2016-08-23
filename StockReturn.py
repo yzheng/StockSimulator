@@ -1,5 +1,13 @@
-#-*- coding: UTF-8 -*- 
+#-*- coding: UTF-8 -*-
 from datetime import datetime
+import sys
+from ff import Graph
+
+def getDateDifferenceInSeconds(date1, date2):
+        d1 = datetime.strptime(str(date1), "%Y%m%d")
+        d2 = datetime.strptime(str(date2), "%Y%m%d")
+        delta =  d2 - d1
+        return delta.total_seconds()
 
 class Match:
     def __init__(self):
@@ -13,12 +21,8 @@ class Match:
         self.expenseSale = 0
         self.capitalGain = 0
         self.isLongTerm = False
+        self.totalNum = 0
 
-    def getDateDifferenceInSeconds(self, date1, date2):
-        d1 = datetime.strptime(str(date1), "%Y%m%d")
-        d2 = datetime.strptime(str(date2), "%Y%m%d")
-        delta =  d2 - d1
-        return delta.total_seconds()
 
     def set(self,
         quantity,
@@ -28,7 +32,8 @@ class Match:
         dateSold,
         salesPrice,
         cost,
-        expenseSale
+        expenseSale,
+        totalNum
         ) :
             self.quantity = quantity
             self.stockId = stockId
@@ -38,8 +43,10 @@ class Match:
             self.salesPrice = salesPrice
             self.cost = cost
             self.expenseSale = expenseSale
-            self.capitalGain = salesPrice * quantity - cost*quantity - expenseSale
-            if(self.getDateDifferenceInSeconds(dateSold, dateAcquired) > 365*24*60*60):
+            self.totalNum = totalNum
+            print  quantity, discription
+            self.capitalGain = (salesPrice - cost)*quantity - expenseSale
+            if(getDateDifferenceInSeconds(dateAcquired, dateSold) > 365*24*60*60):
                 self.isLongTerm = True
 
     def __str__(self):
@@ -53,7 +60,8 @@ class Match:
          self.cost,
          self.expenseSale,
          self.capitalGain,
-         self.isLongTerm]])
+         self.isLongTerm,
+         self.totalNum]])
 
 
 
@@ -170,12 +178,13 @@ class StockReturn:
     def matchTransactions(self):
         currentBuyItem = 0
         for stockId, sellItems in self.sellInfo.iteritems():
-           #if stockId != "2018":
-           #    continue
+           if stockId != "600000":
+               continue
            buyItems = self.buyInfo[stockId]
-           self.match(sellItems, buyItems)
+           #self.match(sellItems, buyItems)
+           self.optimalMatch(sellItems, buyItems)
 
-    def genMatch(self, quantity, buyDs, sellDs):
+    def genMatch(self, quantity, buyDs, sellDs, totalNum):
         m = Match()
         m.set(quantity,
               sellDs.stockId,
@@ -184,7 +193,8 @@ class StockReturn:
               sellDs.date,
               sellDs.averagePrice,
               buyDs.averagePrice,
-              sellDs.commission + sellDs.transferFee + sellDs.otherFees
+              (sellDs.commission + sellDs.transferFee + sellDs.otherFees + sellDs.transactionFee + sellDs.tax) * quantity*1.0/totalNum,
+              totalNum
               )
         #print "Matched: ", m
         self.matchedBuySell.append(m)
@@ -200,17 +210,82 @@ class StockReturn:
         "cost",
         "expenseSale",
         "capitalGain",
-        "isLongTerm"
+        "isLongTerm",
+        "TotalNum"
         ])
 
     def printOutMatched(self):
         self.printHeader()
         for items in self.matchedBuySell:
             print items
+    def possibleMatch(self, buyItem, sellItem):
+        return sellItem.date >= buyItem.date
+
+    def getTax(self, buyItem, sellItem):
+        priceDiff = sellItem.totalAmount - buyItem.totalAmount
+        dateSold = sellItem.date
+        dateAcquired = buyItem.date
+        if (getDateDifferenceInSeconds(dateAcquired, dateSold) > 365*24*60*60):
+            return 0.15*priceDiff
+        else:
+            return 0.25*priceDiff
+
+    def getCost(self, buyItem, sellItem):
+        cost = self.getTax(buyItem, sellItem)
+        if cost > 0:
+            return cost
+        else:
+            return 0
+    def createBipartiteGraph(self, sellItems, buyItems):
+        graphSize = len(buyItems) + len(sellItems) + 2
+        graph = Graph(graphSize)
+        #build cap constraints for edges from source to buy Items
+        sourcePos = 0
+        startOfBuy = 1
+        startOfSell = 1 + len(buyItems)
+        endPos = 1 + len(buyItems) + len(sellItems)
+        #build cap constraints for eduges from buy items to end
+        for i in range(startOfBuy, startOfSell):
+            graph.nodeAt(0, i).setCapacity(abs(buyItems[i-1].num))
+        #build cost edges between buy and sell items
+        for j in range(startOfSell, endPos):
+            graph.nodeAt(j, endPos).setCapacity(abs(sellItems[j-startOfSell].num))
+
+        for i in range(startOfBuy, startOfSell):
+            for j in range(startOfSell, endPos):
+                if self.possibleMatch(buyItems[i-1],
+                                      sellItems[j-startOfSell]):
+                    unitTaxCost = self.getCost(buyItems[i-1],
+                                              sellItems[j-startOfSell])
+                    graph.nodeAt(i,j).setCost(unitTaxCost).setCapacity(sys.maxint)
+        return (graph, startOfBuy, startOfSell, endPos)
+
+    def interpreteGraph(self, graph, startOfBuy, startOfSell, endPos, buyItems, sellItems):
+        for i in range(startOfBuy, startOfSell):
+            for j in range(startOfSell, endPos):
+                n = graph.nodeAt(i,j)
+                #print n.getFlow()
+                if n.getFlow() > 0:
+                    self.genMatch(n.getFlow(), buyItems[i-1], sellItems[j-startOfSell], graph.nodeAt(j, endPos).getCapacity())
+
+
+    def optimalMatch(self, sellItems, buyItems):
+        print "sellItems: ", len(sellItems)
+        print "buyItems: ", len(buyItems)
+        (graph, startOfBuy, startOfSell, endPos) = self.createBipartiteGraph(sellItems, buyItems)
+        print "Graph created:", startOfBuy, startOfSell, endPos
+        print graph
+        graph.minCostMaxFlow()
+        print "after match"
+        print graph
+        self.interpreteGraph(graph, startOfBuy, startOfSell, endPos, buyItems, sellItems)
 
     def match(self, sellItems, buyItems):
         s = 0
         b = 0
+        for x in sellItems:
+            setattr(x, "totalNum", abs(x.num))
+ 
         while b < len(buyItems) and s < len(sellItems):
             #print "sellItems: ", sellItems
             #print "buyItems: ", buyItems
@@ -221,7 +296,8 @@ class StockReturn:
             if sellItems[s].num < buyItems[b].num:
                 self.genMatch(sellItems[s].num,
                               buyItems[b],
-                              sellItems[s]
+                              sellItems[s],
+                              sellItems[s].totalNum
                              )
                 buyItems[b].num -= sellItems[s].num
                 sellItems[s].num = 0
@@ -229,16 +305,18 @@ class StockReturn:
             elif sellItems[s].num == buyItems[b].num:
                 self.genMatch(buyItems[b].num,
                               buyItems[b],
-                              sellItems[s]
+                              sellItems[s],
+                              sellItems[s].totalNum
                              )
                 buyItems[b].num -= sellItems[s].num
                 sellItems[s].num = 0
                 s += 1
                 b += 1
-            else: #sellItems[i].num > buyItems[j].num
+            else: #sellItems[s].num > buyItems[b].num
                 self.genMatch(buyItems[b].num,
                               buyItems[b],
-                              sellItems[s]
+                              sellItems[s],
+                              sellItems[s].totalNum
                             )
                 sellItems[s].num -= buyItems[b].num
                 buyItems[b].num   -= buyItems[b].num
@@ -252,7 +330,7 @@ def main():
    sr.IterateFile(fileName)
    sr.matchTransactions()
    sr.printOutMatched()
-   sr.getDividend()
+   #sr.getDividend()
 
 if __name__ == "__main__":
     main()
